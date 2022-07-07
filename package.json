@@ -1,0 +1,13 @@
+{
+  "name": "nticket-contract",
+  "version": "1.0.0",
+  "main": "index.js",
+  "repository": "https://github.com/nticket/nticket-contract.git",
+  "author": "Yaroslav Reznichencko <teke97@gmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "build": "./build.sh",
+    "deploy": "yarn build && rm -rf neardev && (near dev-deploy || exit 0)",
+    "test": "cargo test --all -- --nocapture --color always"
+  }
+}
