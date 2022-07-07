@@ -16,6 +16,7 @@ use near_sdk::{
 use near_sdk::serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use near_sdk::env::is_valid_account_id;
+use urlencoding::encode;
 
 pub mod event;
 pub use event::NearEvent;
@@ -856,15 +857,18 @@ impl Contract {
 
         let mut token_metadata = self.tokens.token_metadata_by_id.as_ref().unwrap().get(&token_id).unwrap();
 
+        let title = series_metadata.title.unwrap();
+        let ticket_number = token_id_iter.next().unwrap();
+
         token_metadata.title = Some(format!(
             "{}{}{}",
-            series_metadata.title.unwrap(),
+            title,
             TITLE_DELIMETER,
-            token_id_iter.next().unwrap()
+            ticket_number
         ));
 
         token_metadata.reference = series_metadata.reference;
-        token_metadata.media = series_metadata.media;
+        token_metadata.media = Some(format!("data:image/svg+xml;charset=UTF-8,%3c?xml version='1.0' encoding='utf-8'?%3e%3csvg version='1.1' id='Слой_1' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' x='0px' y='0px' viewBox='0 0 300 300' style='enable-background:new 0 0 300 300;' xml:space='preserve'%3e%3cstyle type='text/css'%3e .st0%7bfill:%23FFFFFF;stroke:%23000000;stroke-width:10;%7d .st1%7bfont-family:'MyriadPro-Regular';%7d .st2%7bfont-size:18px;%7d %3c/style%3e%3cpath class='st0' d='M56,16c1.5-5.7,7.3-9,13-7.5l4.7,1.3c4.9,20.3,30.8,27,45.3,12.1l4.7,1.3c5.7,1.5,9,7.3,7.5,13L99.5,154.6 l-75.3-20.2L56,16z'/%3e%3cpath class='st0' d='M23.7,136.5L99,156.6l-12.3,45.9l-14.9-4c-4.2-21.2-31.3-28.4-45.5-12.2l-14.9-4L23.7,136.5z'/%3e%3ctext transform='matrix(1 0 0 1 156 94)' class='st1 st2'%3eTicket %23{}%3c/text%3e%3ctext transform='matrix(1 0 0 1 156 150)'%3e%3ctspan x='0' y='0' class='st1 st2'%3e {} %3c/tspan%3e%3ctspan x='0' y='21.6' class='st1 st2'%3e11/07/2022%3c/tspan%3e%3c/text%3e%3ctext transform='matrix(1 0 0 1 11.4238 251)'%3e%3ctspan x='0' y='0' class='st1 st2'%3eLocation:%3c/tspan%3e%3ctspan x='0' y='21.6' class='st1 st2'%3eNY, Long Avenue%3c/tspan%3e%3c/text%3e%3c/svg%3e", ticket_number.to_string(), encode(&title)));
         token_metadata.copies = series_metadata.copies;
         token_metadata.extra = series_metadata.extra;
 
