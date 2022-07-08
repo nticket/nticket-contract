@@ -1,4 +1,4 @@
-use ed25519_dalek::{PublicKey, Signature, Verifier, PUBLIC_KEY_LENGTH};
+use ed25519_dalek::{PublicKey, Signature, Verifier, PUBLIC_KEY_LENGTH, SIGNATURE_LENGTH};
 use near_contract_standards::non_fungible_token::core::{
     NonFungibleTokenCore, NonFungibleTokenResolver,
 };
@@ -8,15 +8,16 @@ use near_contract_standards::non_fungible_token::metadata::{
 use near_contract_standards::non_fungible_token::NonFungibleToken;
 use near_contract_standards::non_fungible_token::{Token, TokenId};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LazyOption, UnorderedMap, UnorderedSet};
+use near_sdk::collections::{LazyOption, LookupMap, UnorderedMap, UnorderedSet};
 use near_sdk::env::is_valid_account_id;
-use near_sdk::json_types::{ValidAccountId, U128, U64};
+use near_sdk::json_types::{Base64VecU8, ValidAccountId, U128, U64};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
-    assert_one_yocto, env, ext_contract, near_bindgen, serde_json::json, AccountId, Balance,
+    assert_one_yocto, env, ext_contract, log, near_bindgen, serde_json::json, AccountId, Balance,
     BorshStorageKey, Gas, PanicOnDefault, Promise, PromiseOrValue, Timestamp,
 };
 use std::collections::HashMap;
+use std::convert::TryInto;
 
 pub mod event;
 pub use event::NearEvent;
@@ -145,6 +146,7 @@ pub struct Contract {
     treasury_id: AccountId,
     transaction_fee: TransactionFee,
     market_data_transaction_fee: MarketDataTransactionFee,
+    user_public_key: LookupMap<AccountId, Vec<u8>>,
 }
 
 const DATA_IMAGE_SVG_NTICKET_ICON: &str = "data:image/svg+xml,%3Csvg width='1080' height='1080' viewBox='0 0 1080 1080' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1080' height='1080' rx='10' fill='%230000BA'/%3E%3Cpath fill-rule='evenodd' clip-rule='evenodd' d='M335.238 896.881L240 184L642.381 255.288C659.486 259.781 675.323 263.392 689.906 266.718C744.744 279.224 781.843 287.684 801.905 323.725C827.302 369.032 840 424.795 840 491.014C840 557.55 827.302 613.471 801.905 658.779C776.508 704.087 723.333 726.74 642.381 726.74H468.095L501.429 896.881H335.238ZM387.619 331.329L604.777 369.407C614.008 371.807 622.555 373.736 630.426 375.513C660.02 382.193 680.042 386.712 690.869 405.963C704.575 430.164 711.428 459.95 711.428 495.321C711.428 530.861 704.575 560.731 690.869 584.932C677.163 609.133 648.466 621.234 604.777 621.234H505.578L445.798 616.481L387.619 331.329Z' fill='white'/%3E%3C/svg%3E";
@@ -163,6 +165,7 @@ enum StorageKey {
     TokensPerOwner { account_hash: Vec<u8> },
     MarketDataTransactionFee,
     TokenSeriesStaff,
+    UserPublicKey,
 }
 
 #[near_bindgen]
@@ -213,6 +216,7 @@ impl Contract {
             market_data_transaction_fee: MarketDataTransactionFee {
                 transaction_fee: UnorderedMap::new(StorageKey::MarketDataTransactionFee),
             },
+            user_public_key: LookupMap::new(StorageKey::UserPublicKey),
         }
     }
 
@@ -354,6 +358,76 @@ impl Contract {
             .insert(&token_series_id, &token_series);
 
         account_id
+    }
+
+    #[payable]
+    pub fn check_in(
+        &mut self,
+        token_id: TokenId,
+        signature_base64: Base64VecU8,
+        account_id: AccountId,
+        timestamp: TimestampSec,
+    ) -> bool {
+        assert_one_yocto();
+
+        let mut token_id_iter = token_id.split(TOKEN_DELIMETER);
+        let token_series_id = token_id_iter.next().unwrap().parse().unwrap();
+
+        let series = self
+            .token_series_by_id
+            .get(&token_series_id)
+            .expect("No event is found");
+
+        let staff = env::predecessor_account_id();
+        log!("{}", staff);
+
+        assert!(
+            series.checkin_staff.contains(&staff),
+            "Your account should be in checkin staff"
+        );
+
+        assert!(self.tokens.owner_by_id.get(&token_id).expect("No token id") == account_id);
+
+        let public_key_vector = self
+            .user_public_key
+            .get(&account_id)
+            .expect("No public key for user id");
+
+        let public_key_bytes = public_key_to_bytes(public_key_vector);
+
+        let public_key: PublicKey = PublicKey::from_bytes(&public_key_bytes).unwrap();
+
+        let signature_bytes: [u8; SIGNATURE_LENGTH] = signature_key_to_bytes(signature_base64);
+
+        let signature: Signature = Signature::from_bytes(&signature_bytes).unwrap();
+
+        let message = format!("{};{};{}", token_id, account_id, timestamp);
+
+        log!("{:02X?}", message.as_bytes());
+
+        assert!(public_key.verify(message.as_bytes(), &signature).is_ok());
+        true
+    }
+
+    #[payable]
+    pub fn add_public_key(&mut self, public_key_base64: Base64VecU8) {
+        assert_one_yocto();
+
+        let account_id = env::predecessor_account_id();
+        let public_key_vec: Vec<u8> = public_key_base64.try_to_vec().unwrap()[4..].to_vec();
+        log!("{:02X?}", public_key_vec);
+        assert_eq!(public_key_vec.len(), 32);
+
+        self.user_public_key.insert(&account_id, &public_key_vec);
+    }
+
+    pub fn get_public_key_by_id(&self, account_id: AccountId) -> Base64VecU8 {
+        assert_one_yocto();
+
+        self.user_public_key
+            .get(&account_id)
+            .expect("No key found for user")
+            .into()
     }
 
     #[payable]
@@ -1373,6 +1447,36 @@ fn refund_deposit(storage_used: u64, extra_spend: Balance) {
 
 fn to_sec(timestamp: Timestamp) -> TimestampSec {
     (timestamp / 10u64.pow(9)) as u32
+}
+
+fn public_key_to_bytes<T>(v: Vec<T>) -> [T; PUBLIC_KEY_LENGTH]
+where
+    T: Copy,
+{
+    let slice = v.as_slice();
+    let array: [T; PUBLIC_KEY_LENGTH] = match slice.try_into() {
+        Ok(ba) => ba,
+        Err(_) => panic!(
+            "Expected a Vec of length {} but it was {}",
+            PUBLIC_KEY_LENGTH,
+            v.len()
+        ),
+    };
+    array
+}
+
+fn signature_key_to_bytes(base64: Base64VecU8) -> [u8; SIGNATURE_LENGTH] {
+    let v: Vec<u8> = base64.try_to_vec().unwrap()[4..].to_vec();
+    let slice = v.as_slice();
+    let array: [u8; SIGNATURE_LENGTH] = match slice.try_into() {
+        Ok(ba) => ba,
+        Err(_) => panic!(
+            "Expected a Vec of length {} but it was {}",
+            SIGNATURE_LENGTH,
+            v.len()
+        ),
+    };
+    array
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
