@@ -21,10 +21,15 @@ use urlencoding::encode;
 pub mod event;
 pub use event::NearEvent;
 
+macro_rules! PLATFORM_ICON {() => {include_str!("data/nticket-icon.svg")}}
+macro_rules! TICKET_TPL {() => {include_str!("data/ticket.svg")}}
+
 /// between token_series_id and edition number e.g. 42:2 where 42 is series and 2 is edition
 pub const TOKEN_DELIMETER: char = ':';
+
 /// TokenMetadata.title returned for individual token e.g. "Title — 2/10" where 10 is max copies
 pub const TITLE_DELIMETER: &str = " #";
+
 /// e.g. "Title — 2/10" where 10 is max copies
 pub const EDITION_DELIMETER: &str = "/";
 
@@ -34,6 +39,7 @@ const GAS_FOR_NFT_APPROVE: Gas = 10_000_000_000_000;
 const GAS_FOR_MINT: Gas = 90_000_000_000_000;
 const NO_DEPOSIT: Balance = 0;
 const MAX_PRICE: Balance = 1_000_000_000 * 10u128.pow(24);
+
 
 pub type TokenSeriesId = String;
 pub type TimestampSec = u32;
@@ -86,7 +92,10 @@ pub struct TokenSeries {
 	tokens: UnorderedSet<TokenId>,
     price: Option<Balance>,
     is_mintable: bool,
-    royalty: HashMap<AccountId, u32>
+    royalty: HashMap<AccountId, u32>,
+
+    // Custom
+    checkin_staff: UnorderedSet<AccountId>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -114,21 +123,12 @@ pub struct MarketDataTransactionFee {
 
 near_sdk::setup_alloc!();
 
-#[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
-pub struct ContractV1 {
-    tokens: NonFungibleToken,
-    metadata: LazyOption<NFTContractMetadata>,
-    // CUSTOM
-	token_series_by_id: UnorderedMap<TokenSeriesId, TokenSeries>,
-    treasury_id: AccountId,
-    transaction_fee: TransactionFee
-}
-
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
     tokens: NonFungibleToken,
     metadata: LazyOption<NFTContractMetadata>,
+
     // CUSTOM
     token_series_by_id: UnorderedMap<TokenSeriesId, TokenSeries>,
     treasury_id: AccountId,
@@ -145,6 +145,7 @@ enum StorageKey {
     TokenMetadata,
     Enumeration,
     Approval,
+
     // CUSTOM
     TokenSeriesById,
     TokensBySeriesInner { token_series: String },
@@ -161,9 +162,9 @@ impl Contract {
             treasury_id,
             NFTContractMetadata {
                 spec: NFT_METADATA_SPEC.to_string(),
-                name: "Nticket Collectibles".to_string(),
+                name: "NTICKETS WOW".to_string(),
                 symbol: "NTICKET".to_string(),
-                icon: Some(DATA_IMAGE_SVG_NTICKET_ICON.to_string()),
+                icon: Some(PLATFORM_ICON!().to_string()),
                 base_uri: Some("https://ipfs.fleek.co/ipfs".to_string()),
                 reference: None,
                 reference_hash: None,
@@ -174,8 +175,8 @@ impl Contract {
 
     #[init]
     pub fn new(
-        owner_id: ValidAccountId, 
-        treasury_id: ValidAccountId, 
+        owner_id: ValidAccountId,
+        treasury_id: ValidAccountId,
         metadata: NFTContractMetadata,
         current_fee: u16,
     ) -> Self {
@@ -201,29 +202,6 @@ impl Contract {
                 transaction_fee: UnorderedMap::new(StorageKey::MarketDataTransactionFee)
             },
         }
-    }
-
-    #[init(ignore_state)]
-    pub fn migrate() -> Self {
-        let prev: ContractV1 = env::state_read().expect("ERR_NOT_INITIALIZED");
-        assert_eq!(
-            env::predecessor_account_id(),
-            prev.tokens.owner_id,
-            "Nticket: Only owner"
-        );
-
-        let this = Contract {
-            tokens: prev.tokens,
-            metadata: prev.metadata,
-            token_series_by_id: prev.token_series_by_id,
-            treasury_id: prev.treasury_id,
-            transaction_fee: prev.transaction_fee,
-            market_data_transaction_fee: MarketDataTransactionFee{
-                transaction_fee: UnorderedMap::new(StorageKey::MarketDataTransactionFee)
-            },
-        };
-
-        this
     }
 
     #[payable]
@@ -265,7 +243,6 @@ impl Contract {
         self.calculate_current_transaction_fee()
     }
 
-
     pub fn calculate_current_transaction_fee(&mut self) -> u128 {
         let transaction_fee: &TransactionFee = &self.transaction_fee;
         if transaction_fee.next_fee.is_some() {
@@ -304,6 +281,14 @@ impl Contract {
     }
 
     // CUSTOM
+
+    pub fn add_checkin_staff(
+        &mut self,
+        token_series_id: TokenSeriesId,
+        account_id: AccountId
+    ) -> AccountId {
+        // TODO: impl...
+    }
 
     #[payable]
     pub fn nft_create_series(
@@ -868,7 +853,7 @@ impl Contract {
         ));
 
         token_metadata.reference = series_metadata.reference;
-        token_metadata.media = Some(format!("data:image/svg+xml;charset=UTF-8,%3c?xml version='1.0' encoding='utf-8'?%3e%3csvg version='1.1' id='Слой_1' xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' x='0px' y='0px' viewBox='0 0 300 300' style='enable-background:new 0 0 300 300;' xml:space='preserve'%3e%3cstyle type='text/css'%3e .st0%7bfill:%23FFFFFF;stroke:%23000000;stroke-width:10;%7d .st1%7bfont-family:'MyriadPro-Regular';%7d .st2%7bfont-size:18px;%7d %3c/style%3e%3cpath class='st0' d='M56,16c1.5-5.7,7.3-9,13-7.5l4.7,1.3c4.9,20.3,30.8,27,45.3,12.1l4.7,1.3c5.7,1.5,9,7.3,7.5,13L99.5,154.6 l-75.3-20.2L56,16z'/%3e%3cpath class='st0' d='M23.7,136.5L99,156.6l-12.3,45.9l-14.9-4c-4.2-21.2-31.3-28.4-45.5-12.2l-14.9-4L23.7,136.5z'/%3e%3ctext transform='matrix(1 0 0 1 156 94)' class='st1 st2'%3eTicket %23{}%3c/text%3e%3ctext transform='matrix(1 0 0 1 156 150)'%3e%3ctspan x='0' y='0' class='st1 st2'%3e {} %3c/tspan%3e%3ctspan x='0' y='21.6' class='st1 st2'%3e11/07/2022%3c/tspan%3e%3c/text%3e%3ctext transform='matrix(1 0 0 1 11.4238 251)'%3e%3ctspan x='0' y='0' class='st1 st2'%3eLocation:%3c/tspan%3e%3ctspan x='0' y='21.6' class='st1 st2'%3eNY, Long Avenue%3c/tspan%3e%3c/text%3e%3c/svg%3e", ticket_number.to_string(), encode(&title)));
+        token_metadata.media = Some(TICKET_TPL!().to_string());
         token_metadata.copies = series_metadata.copies;
         token_metadata.extra = series_metadata.extra;
 
