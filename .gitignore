@@ -4,3 +4,4 @@
 nticket.iml
 neardev
 out/*.wasm
+.DS_Store
