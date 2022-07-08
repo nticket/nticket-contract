@@ -503,6 +503,8 @@ impl Contract {
             None
         };
 
+        let mut checkin_staff = UnorderedSet::new(StorageKey::TokenSeriesStaff);
+        checkin_staff.insert(&caller_id);
         self.token_series_by_id.insert(
             &token_series_id,
             &TokenSeries {
@@ -518,7 +520,7 @@ impl Contract {
                 price: price_res,
                 is_mintable: true,
                 royalty: royalty_res.clone(),
-                checkin_staff: UnorderedSet::new(StorageKey::TokenSeriesStaff),
+                checkin_staff: checkin_staff,
                 used_ids: UnorderedSet::new(StorageKey::TokenSeriesUsed)
             },
         );
