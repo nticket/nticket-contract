@@ -16,7 +16,6 @@ use near_sdk::{
 use near_sdk::serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use near_sdk::env::is_valid_account_id;
-use urlencoding::encode;
 
 pub mod event;
 pub use event::NearEvent;
@@ -105,7 +104,8 @@ pub struct TokenSeriesJson {
 	metadata: TokenMetadata,
 	creator_id: AccountId,
     royalty: HashMap<AccountId, u32>,
-    transaction_fee: Option<U128>
+    transaction_fee: Option<U128>,
+    checkin_staff: Vec<AccountId>
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
@@ -151,6 +151,7 @@ enum StorageKey {
     TokensBySeriesInner { token_series: String },
     TokensPerOwner { account_hash: Vec<u8> },
     MarketDataTransactionFee,
+    TokenSeriesStaff
 }
 
 #[near_bindgen]
@@ -282,12 +283,48 @@ impl Contract {
 
     // CUSTOM
 
+    #[payable]
     pub fn add_checkin_staff(
         &mut self,
         token_series_id: TokenSeriesId,
         account_id: AccountId
     ) -> AccountId {
-        // TODO: impl...
+        let mut token_series = self
+            .token_series_by_id
+            .get(&token_series_id)
+            .expect("Nticket: Token series not exist");
+        let caller_id = env::predecessor_account_id();
+
+        assert_eq!(token_series.creator_id, caller_id, "Nticket: Caller is not creator_id");
+
+        // TODO: check contains
+
+        token_series.checkin_staff.insert(&account_id);
+        self.token_series_by_id.insert(&token_series_id, &token_series);
+
+        account_id
+    }
+
+    #[payable]
+    pub fn remove_checkin_staff(
+        &mut self,
+        token_series_id: TokenSeriesId,
+        account_id: AccountId
+    ) -> AccountId {
+        let mut token_series = self
+            .token_series_by_id
+            .get(&token_series_id)
+            .expect("Nticket: Token series not exist");
+        let caller_id = env::predecessor_account_id();
+
+        assert_eq!(token_series.creator_id, caller_id, "Nticket: Caller is not creator_id");
+
+        // TODO: check contains
+
+        token_series.checkin_staff.remove(&account_id);
+        self.token_series_by_id.insert(&token_series_id, &token_series);
+
+        account_id
     }
 
     #[payable]
@@ -362,7 +399,13 @@ impl Contract {
             price: price_res,
             is_mintable: true,
             royalty: royalty_res.clone(),
+            checkin_staff: UnorderedSet::new(StorageKey::TokenSeriesStaff)
         });
+
+        let token_series = self
+            .token_series_by_id
+            .get(&token_series_id)
+            .expect("Nticket: Token series not exist");
 
         // set market data transaction fee
         let current_transaction_fee = self.calculate_current_transaction_fee();
@@ -377,7 +420,8 @@ impl Contract {
                     "creator_id": caller_id,
                     "price": price,
                     "royalty": royalty_res,
-                    "transaction_fee": &current_transaction_fee.to_string()
+                    "transaction_fee": &current_transaction_fee.to_string(),
+                    "checkin_staff": token_series.checkin_staff.to_vec()
                 }
             })
             .to_string()
@@ -391,8 +435,9 @@ impl Contract {
 			metadata: token_metadata,
 			creator_id: caller_id.into(),
             royalty: royalty_res,
-            transaction_fee: Some(current_transaction_fee.into()) 
-		}
+            transaction_fee: Some(current_transaction_fee.into()),
+            checkin_staff: token_series.checkin_staff.to_vec()
+        }
     }
 
     #[payable]
@@ -757,7 +802,8 @@ impl Contract {
 			metadata: token_series.metadata,
 			creator_id: token_series.creator_id,
             royalty: token_series.royalty,
-            transaction_fee: Some(current_transaction_fee.into()) 
+            transaction_fee: Some(current_transaction_fee.into()),
+            checkin_staff: token_series.checkin_staff.to_vec()
 		}
 	}
 
@@ -795,7 +841,8 @@ impl Contract {
                 metadata: token_series.metadata,
                 creator_id: token_series.creator_id,
                 royalty: token_series.royalty,
-                transaction_fee: None 
+                transaction_fee: None,
+                checkin_staff: token_series.checkin_staff.to_vec()
             })
             .collect()
     }
