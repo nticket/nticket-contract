@@ -8,8 +8,8 @@ use near_contract_standards::non_fungible_token::metadata::{
 use near_contract_standards::non_fungible_token::NonFungibleToken;
 use near_contract_standards::non_fungible_token::{Token, TokenId};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LazyOption, UnorderedMap, UnorderedSet};
 use near_sdk::env::is_valid_account_id;
+use near_sdk::collections::{LazyOption, UnorderedMap, UnorderedSet, LookupMap};
 use near_sdk::json_types::{ValidAccountId, U128, U64};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
@@ -141,6 +141,7 @@ pub struct Contract {
     metadata: LazyOption<NFTContractMetadata>,
 
     // CUSTOM
+    token_series_owners_by_id: LookupMap<AccountId, UnorderedSet<TokenSeriesId>>,
     token_series_by_id: UnorderedMap<TokenSeriesId, TokenSeries>,
     treasury_id: AccountId,
     transaction_fee: TransactionFee,
@@ -163,6 +164,8 @@ enum StorageKey {
     TokensPerOwner { account_hash: Vec<u8> },
     MarketDataTransactionFee,
     TokenSeriesStaff,
+    TokenSeriesOwnersById,
+    TokenSeriesOwnersListIds { token_series_id: TokenSeriesId },
 }
 
 #[near_bindgen]
@@ -213,6 +216,7 @@ impl Contract {
             market_data_transaction_fee: MarketDataTransactionFee {
                 transaction_fee: UnorderedMap::new(StorageKey::MarketDataTransactionFee),
             },
+            token_series_owners_by_id: LookupMap::new(StorageKey::TokenSeriesOwnersById)
         }
     }
 
@@ -437,6 +441,7 @@ impl Contract {
             },
         );
 
+        // TODO: это тупой кусок, лучше переписать
         let token_series = self
             .token_series_by_id
             .get(&token_series_id)
@@ -447,6 +452,21 @@ impl Contract {
         self.market_data_transaction_fee
             .transaction_fee
             .insert(&token_series_id, &current_transaction_fee);
+
+        let mut current_owner_events = self.token_series_owners_by_id.get(&caller_id.to_string()).unwrap_or_else(|| {
+            // Почему оно создаёт UnorderedSet, но не кладёт в него сразу данные?
+            UnorderedSet::new(
+                StorageKey::TokenSeriesOwnersListIds {
+                    token_series_id: token_series_id.clone(),
+                }
+                .try_to_vec()
+                .unwrap(),
+            )
+        });
+
+        current_owner_events.insert(&(token_series_id.clone() as TokenSeriesId));
+
+        self.token_series_owners_by_id.insert(&caller_id.to_string(), &current_owner_events);
 
         env::log(
             json!({
@@ -1193,7 +1213,39 @@ impl Contract {
             .collect()
     }
 
-    pub fn nft_payout(&self, token_id: TokenId, balance: U128, max_len_payout: u32) -> Payout {
+    pub fn nft_token_series_for_owner(
+        &self,
+        account_id: ValidAccountId,
+        from_index: Option<U128>,
+        limit: Option<u64>,
+    ) -> Vec<TokenSeriesJson> {
+        let token_set = if let Some(token_set) = self.token_series_owners_by_id.get(account_id.as_ref()) {
+            token_set
+        } else {
+            return vec![];
+        };
+        let limit = limit.map(|v| v as usize).unwrap_or(usize::MAX);
+        assert_ne!(limit, 0, "Cannot provide limit of 0.");
+        let start_index: u128 = from_index.map(From::from).unwrap_or_default();
+        assert!(
+            token_set.len() as u128 > start_index,
+            "Out of bounds, please use a smaller from_index."
+        );
+
+        token_set
+            .iter()
+            .skip(start_index as usize)
+            .take(limit)
+            .map(|token_id| self.nft_get_series_single(token_id))
+            .collect()
+    }
+
+    pub fn nft_payout(
+        &self,
+        token_id: TokenId,
+        balance: U128,
+        max_len_payout: u32
+    ) -> Payout{
         let owner_id = self.tokens.owner_by_id.get(&token_id).expect("No token id");
         let mut token_id_iter = token_id.split(TOKEN_DELIMETER);
         let token_series_id = token_id_iter.next().unwrap().parse().unwrap();
