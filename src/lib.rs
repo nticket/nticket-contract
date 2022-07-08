@@ -106,6 +106,7 @@ pub struct TokenSeries {
 
     // Custom
     checkin_staff: UnorderedSet<AccountId>,
+    used_ids: UnorderedSet<TokenId>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -116,8 +117,9 @@ pub struct TokenSeriesJson {
     creator_id: AccountId,
     royalty: HashMap<AccountId, u32>,
     transaction_fee: Option<U128>,
-    price: Option<Balance>,
+    price: Option<U128>,
     checkin_staff: Vec<AccountId>,
+    used_ids: Vec<TokenId>,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
@@ -169,6 +171,7 @@ enum StorageKey {
     UserPublicKey,
     TokenSeriesOwnersById,
     TokenSeriesOwnersListIds { token_series_id: TokenSeriesId },
+    TokenSeriesUsed,
 }
 
 #[near_bindgen]
@@ -512,6 +515,7 @@ impl Contract {
                 is_mintable: true,
                 royalty: royalty_res.clone(),
                 checkin_staff: UnorderedSet::new(StorageKey::TokenSeriesStaff),
+                used_ids: UnorderedSet::new(StorageKey::TokenSeriesUsed)
             },
         );
 
@@ -568,7 +572,7 @@ impl Contract {
             royalty: royalty_res,
             transaction_fee: Some(current_transaction_fee.into()),
             checkin_staff: token_series.checkin_staff.to_vec(),
-            price: Some(u128::from(price.unwrap().0)),
+            price,
         }
     }
 
@@ -976,7 +980,7 @@ impl Contract {
             royalty: token_series.royalty,
             transaction_fee: Some(current_transaction_fee.into()),
             checkin_staff: token_series.checkin_staff.to_vec(),
-            price: token_series.price,
+            price: Some(U128::from(token_series.price.unwrap())),
         }
     }
 
@@ -1016,7 +1020,7 @@ impl Contract {
                 royalty: token_series.royalty,
                 transaction_fee: None,
                 checkin_staff: token_series.checkin_staff.to_vec(),
-                price: token_series.price,
+                price: Some(U128::from(token_series.price.unwrap())),
             })
             .collect()
     }
