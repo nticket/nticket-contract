@@ -119,7 +119,6 @@ pub struct TokenSeriesJson {
     transaction_fee: Option<U128>,
     price: Option<U128>,
     checkin_staff: Vec<AccountId>,
-    used_ids: Vec<TokenId>,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
@@ -380,10 +379,12 @@ impl Contract {
         let mut token_id_iter = token_id.split(TOKEN_DELIMETER);
         let token_series_id = token_id_iter.next().unwrap().parse().unwrap();
 
-        let series = self
+        let mut series = self
             .token_series_by_id
             .get(&token_series_id)
             .expect("No event is found");
+
+        assert!(!series.used_ids.contains(&token_id), "This token has been activated");
 
         let staff = env::predecessor_account_id();
         log!("{}", staff);
@@ -413,6 +414,9 @@ impl Contract {
         log!("{:02X?}", message.as_bytes());
 
         assert!(public_key.verify(message.as_bytes(), &signature).is_ok());
+        
+        series.used_ids.insert(&token_id);
+        
         true
     }
 
