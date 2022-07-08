@@ -105,6 +105,7 @@ pub struct TokenSeriesJson {
 	creator_id: AccountId,
     royalty: HashMap<AccountId, u32>,
     transaction_fee: Option<U128>,
+    price: Option<Balance>,
     checkin_staff: Vec<AccountId>
 }
 
@@ -430,13 +431,16 @@ impl Contract {
 
         refund_deposit(env::storage_usage() - initial_storage_usage, 0);
 
+
+
 		TokenSeriesJson{
             token_series_id,
 			metadata: token_metadata,
 			creator_id: caller_id.into(),
             royalty: royalty_res,
             transaction_fee: Some(current_transaction_fee.into()),
-            checkin_staff: token_series.checkin_staff.to_vec()
+            checkin_staff: token_series.checkin_staff.to_vec(),
+            price: Some(u128::from(price.unwrap().0))
         }
     }
 
@@ -803,7 +807,8 @@ impl Contract {
 			creator_id: token_series.creator_id,
             royalty: token_series.royalty,
             transaction_fee: Some(current_transaction_fee.into()),
-            checkin_staff: token_series.checkin_staff.to_vec()
+            checkin_staff: token_series.checkin_staff.to_vec(),
+            price: token_series.price
 		}
 	}
 
@@ -842,7 +847,8 @@ impl Contract {
                 creator_id: token_series.creator_id,
                 royalty: token_series.royalty,
                 transaction_fee: None,
-                checkin_staff: token_series.checkin_staff.to_vec()
+                checkin_staff: token_series.checkin_staff.to_vec(),
+                price: token_series.price
             })
             .collect()
     }
