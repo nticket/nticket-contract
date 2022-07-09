@@ -166,7 +166,7 @@ enum StorageKey {
     TokensBySeriesInner { token_series: String },
     TokensPerOwner { account_hash: Vec<u8> },
     MarketDataTransactionFee,
-    TokenSeriesStaff,
+    TokenSeriesStaff { token_series: String },
     UserPublicKey,
     TokenSeriesOwnersById,
     TokenSeriesOwnersListIds { token_series_id: TokenSeriesId },
@@ -503,8 +503,9 @@ impl Contract {
             None
         };
 
-        let mut checkin_staff = UnorderedSet::new(StorageKey::TokenSeriesStaff);
+        let mut checkin_staff = UnorderedSet::new(StorageKey::TokenSeriesStaff { token_series: token_series_id.clone()});
         checkin_staff.insert(&caller_id);
+
         self.token_series_by_id.insert(
             &token_series_id,
             &TokenSeries {
