@@ -417,7 +417,9 @@ impl Contract {
         assert!(public_key.verify(message.as_bytes(), &signature).is_ok());
         
         series.used_ids.insert(&token_id);
-        
+
+        self.token_series_by_id.insert(&token_series_id, &series);
+
         true
     }
 
